@@ -1,0 +1,257 @@
+Your are experinced genai engnireer and then backend developer listn to my requirments 
+and write code for me........
+So basically I am making an Agentic AI converstaional document drafter for canadian 
+laws I am going to use FastAPI for the api part and them and then the Langgraph for the AI part...
+
+So first the AI and the backend API should have features/endpoints to 
+    Create a new user 
+    Login with that user based on this each user will get access to there documents 
+    and there converstaion 
+
+    it should have options should create a new converstion, select and contiue an old converstion, list 
+    all converstaions, delete a converstaion
+
+    an converstion should have a convo id using which it can be selected and then a converstion
+    an HumanMessage and AI message chatmemory basically an converstional context the langchain and
+    langgraph have package for this we have to use the best one that suits this scenario
+    and an document that is the generated document form that converstion if no document generated 
+    then it will be the empty once the doucment is generated then it will be filled The document can 
+    be also edited but the chathistory can be only appended with new chathistory not modified 
+    may be the entire chat converstion can be delted
+
+    and the important thing is that each user should only have and able to see there converstions and 
+    data like docments 
+
+    now comes the agentic ai, An agentic ai is a legal document drafter that will ask questions and 
+    have a interactive conversation with the user and then generate a document based on that conversation
+    it will ask questions get the users reqeuirements and collect data that is needed to draft an document
+    for example to draft an legal document it may need the users name, address, phone number, email address, 
+    date... anything it is needed it will ask... if the user answer is not clear or missing details 
+    it will ask to get the clear answer or to provide the missing details to the user once the doucment 
+    is generated the agent will also refine the doucment like the doucment should not have any text form the 
+    AI like Here is your doucment.... DOCUMENT... that usually an LLM produce... it should remove it 
+    and it should make sure that there is no place holder like [DATE] [NAME]... etc in the generated 
+    document if something the agent should again ask users to clairfy it and update the document
+    even the user needs to refine or do changes to the doucment the Agent will do it based on the user 
+    asks.. first check if the doucment is there if not say there is no doucment gerneater else refine 
+    the doucment based on the users says and also the agent should think and validate and warn user if 
+    anything is wrong or can give suggestion if any improments is possible
+
+    <agent graph>
+    flowchart TD
+    init((init))
+    identify_document(("identify_document"))
+    prepare_fields(("prepare_fields"))
+    ask_field(("ask_field"))
+    validate_field(("validate_field"))
+    generate_draft(("generate_draft"))
+    check_placeholders(("check_placeholders"))
+    clarify_placeholders(("clarify_placeholders"))
+    ask_refine(("ask_refine"))
+    apply_refine(("apply_refine"))
+    finalize(("finalize"))
+    idle(("idle"))
+    handle_error(("handle_error"))
+    answer_question(("answer_question"))
+
+    init --> identify_document
+
+    identify_document -->|has_drafted_once == true| idle
+    identify_document -->|has_drafted_once == false| prepare_fields
+
+    prepare_fields --> ask_field
+
+    ask_field -->|user answered| validate_field
+    ask_field -->|error| handle_error
+
+    validate_field -->|invalid or more missing| ask_field
+    validate_field -->|all fields collected| generate_draft
+    validate_field -->|error| handle_error
+
+    generate_draft --> check_placeholders
+
+    check_placeholders -->|placeholders found| clarify_placeholders
+    check_placeholders -->|no placeholders| ask_refine
+
+    clarify_placeholders -->|user clarified| validate_field
+    clarify_placeholders -->|error| handle_error
+
+    ask_refine -->|has refine request| apply_refine
+    ask_refine -->|no refine request| finalize
+
+    apply_refine --> finalize
+
+    finalize --> idle
+    handle_error --> idle
+
+    idle -->|ends with “?”| answer_question
+    idle -->|contains “refine”| ask_refine
+    idle -->|otherwise| idle
+    answer_question --> idle
+    </agent graph>
+
+    ------
+
+    <agent graph code>
+    from langgraph.graph import StateGraph
+from pydantic import BaseModel, Field
+from typing import Dict, Any, List
+
+class AgentState(BaseModel):
+    session_id: str
+    user_input: str = ""
+    document_type: str = ""
+    required_fields: List[str] = Field(default_factory=list)
+    current_field: str = ""
+    collected_info: Dict[str, Any] = Field(default_factory=dict)
+    draft: str = ""
+    placeholders_found: List[str] = Field(default_factory=list)
+    refine_request: str = ""
+    final_document: str = ""
+    error_message: str = ""
+    has_drafted_once: bool = Field(default=False)
+
+def build_agent_graph() -> StateGraph:
+    g = StateGraph(AgentState)
+
+    g.add_node("init", init_handler)
+    g.add_node("identify_document", identify_handler)
+    g.add_node("prepare_fields", prepare_fields_handler)
+    g.add_node("ask_field", ask_field_handler)
+    g.add_node("validate_field", validate_field_handler)
+    g.add_node("generate_draft", generate_draft_handler)
+    g.add_node("check_placeholders", check_placeholders_handler)
+    g.add_node("clarify_placeholders", clarify_placeholders_handler)
+    g.add_node("ask_refine", ask_refine_handler)
+    g.add_node("apply_refine", apply_refine_handler)
+    g.add_node("finalize", finalize_handler)
+    g.add_node("idle", idle_handler)
+    g.add_node("answer_question", answer_question_handler)
+    g.add_node("handle_error", handle_error_handler)
+
+    g.set_entry_point("init")
+
+    g.add_edge("init", "identify_document")
+
+    g.add_conditional_edges(
+        "identify_document",
+        lambda st: "idle" if st.has_drafted_once else "prepare_fields",
+        {"idle": "idle", "prepare_fields": "prepare_fields"},
+    )
+
+    g.add_edge("prepare_fields", "ask_field")
+
+    g.add_conditional_edges(
+        "ask_field",
+        lambda st: "validate_field" if st.user_input else "handle_error",
+        {"validate_field": "validate_field", "handle_error": "handle_error"},
+    )
+
+    g.add_conditional_edges(
+        "validate_field",
+        lambda st: "ask_field" if (not st.current_field or st.current_field not in st.collected_info)
+                   else "generate_draft",
+        {"ask_field": "ask_field", "generate_draft": "generate_draft", "handle_error": "handle_error"},
+    )
+
+    g.add_edge("generate_draft", "check_placeholders")
+
+    g.add_conditional_edges(
+        "check_placeholders",
+        lambda st: "clarify_placeholders" if st.placeholders_found else "ask_refine",
+        {"clarify_placeholders": "clarify_placeholders", "ask_refine": "ask_refine"},
+    )
+
+    g.add_conditional_edges(
+        "clarify_placeholders",
+        lambda st: "validate_field" if st.user_input else "handle_error",
+        {"validate_field": "validate_field", "handle_error": "handle_error"},
+    )
+    g.add_edge("validate_field", "generate_draft")
+
+    g.add_conditional_edges(
+        "ask_refine",
+        lambda st: "apply_refine" if st.refine_request else "finalize",
+        {"apply_refine": "apply_refine", "finalize": "finalize"},
+    )
+
+    g.add_edge("apply_refine", "finalize")
+
+    g.add_edge("finalize", "idle")
+
+    g.add_conditional_edges(
+        "idle",
+        lambda st: "answer_question" if st.user_input.strip().endswith("?")
+                   else "ask_refine" if "refine" in st.user_input.lower()
+                   else "idle",
+        {"answer_question": "answer_question", "ask_refine": "ask_refine", "idle": "idle"},
+    )
+
+    g.add_edge("answer_question", "idle")
+    g.add_edge("handle_error", "idle")
+
+    return g
+    </agent graph code>
+
+    The agent will go ideal state instead of end and it will infinetly run 
+    and the agent should not allow more than one document in a converstion ask 
+    the user to create a new converstaion for new doucment created doument can be 
+    rectified but not entirely new document is supported 
+
+    The should say like 
+    """
+    Hi I am your Legal assistant I can help you to draft a legal document
+        NDA agreement
+        Lease agreement
+        Shareholder agreement
+        Partnership agreement
+        or others should feel free to describe your needs
+    """ ... this is just an template I need further template that is professinal, crisp 
+    and to the point
+
+    LLM Handling we are using an Hugging Inference point hosted LLM 
+    the LLM is openai compatable here is the code snippet to use it 
+    """
+    # app/llm.py
+
+import os
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+
+load_dotenv()
+
+HF_TOKEN = os.getenv("HF_TOKEN")
+if not HF_TOKEN:
+    raise RuntimeError("Missing HF_TOKEN environment variable")
+
+llm = ChatOpenAI(
+    openai_api_base="https://oaitzvyxm6614ekn.us-east-1.aws.endpoints.huggingface.cloud",
+    openai_api_key=HF_TOKEN,
+    temperature=0.3,
+    max_tokens=8192,
+)
+
+    """... This is how you initilize the llm use the excat url and then there is also one corner 
+    case you have to handle the LLM will scale to zero after 15 mins so when you call the llm 
+    if it is scalled to zero then it will cold start in this time it will return 503 code which 
+    means it is cold starting and you have to wait you have to recheck lets say every 5 seconds 
+    once it is aval you can work on it so you havve to basically also handle this cold starting 
+    timing 
+
+    now you have to create a higulity production grade highly scaleble and cunncurent system out of it
+    that uses the industry best practices and create a robust well structured easy to work, read and 
+    understand codebase, code, file structured
+
+    first plan the develpment and create a file structure for this project I am using 
+    windows give me commands that I can copy paste to ccreate that file structure 
+
+    Then first work on the agentic ai part I want you to completely finish this and then I wnat 
+    to test it in console command line this is the first step first give me file by file code for it 
+    and also the requirments.txt content
+
+    then once I tested then implement the fastapi endpoints with auth and a static html file 
+    which I can use to test it out the each of the fucntioalities like login conversation 
+    see doucment.... 
+
+    draft a plan and proceed remmbermer In future I am also going to add tools to the ai like 
+    webserach vector db retrival so plan accoridgnly
