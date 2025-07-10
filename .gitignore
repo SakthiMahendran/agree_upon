@@ -1,5 +1,0 @@
-test.db
-__pycache__/
-venv/
-*.db
-*.sqlite
