@@ -1,104 +1,126 @@
 # api/routers/agent.py
 
-import os
 import logging
-import traceback
 import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from httpx import HTTPStatusError
+from fastapi.responses import StreamingResponse
 
-from .. import models, schemas, deps
-from agent.agent import get_agent_executor
+from api import models, schemas, deps
+from agent.agent_runner import run_agent_step
+from agent.state import AgentState
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 logger = logging.getLogger("api.routers.agent")
-logger.setLevel(logging.DEBUG)
 
-@router.post("/{conv_id}/message", response_model=schemas.MessageRead)
+
+# ──────────────────────────────────────────────
+# POST /agent/{conversation_id}/message
+# Handles normal (non-streaming) agent replies
+# ──────────────────────────────────────────────
+@router.post("/{conversation_id}/message", response_model=schemas.MessageRead)
 def send_message(
-    conv_id: int,
+    conversation_id: str,
     msg_in: schemas.MessageCreate,
     db: Session = Depends(deps.get_db),
-    current_user=Depends(deps.get_current_user),
+    user: models.User = Depends(deps.get_current_user),
 ):
-    try:
-        logger.info(f"Agent start: conv={conv_id}, input={msg_in.content!r}")
+    # 1. Load conversation
+    conv = (
+        db.query(models.Conversation)
+        .filter_by(id=conversation_id, user_id=user.id)
+        .first()
+    )
+    if not conv:
+        raise HTTPException(404, "Conversation not found.")
 
-        # 1) Load + authorize
-        conv = db.get(models.Conversation, conv_id)
-        if not conv or conv.owner_id != current_user.id:
-            raise HTTPException(404, "Conversation not found")
+    # 2. Safely load or initialize AgentState
+    raw_state = getattr(conv, "state", None)
+    state = AgentState(**raw_state) if raw_state else AgentState()
 
-        # 2) Save user message
+    # 3. Run agent logic
+    result = run_agent_step(state, msg_in.content, conversation_id)
+    reply, updated_state = result["reply"], result["updated_state"]
+
+    # 4. Persist messages (use `sender`, matching your ORM model)
+    user_msg = models.Message(
+        conversation_id=conv.id,
+        sender="user",
+        content=msg_in.content
+    )
+    ai_msg = models.Message(
+        conversation_id=conv.id,
+        sender="assistant",
+        content=reply
+    )
+    db.add_all([user_msg, ai_msg])
+
+    # 5. Persist updated state if supported
+    if hasattr(conv, "state"):
+        conv.state = updated_state.dict()
+    else:
+        logger.debug("Conversation model has no 'state' attribute—skipping state persistence.")
+
+    db.commit()
+    db.refresh(ai_msg)
+
+    return schemas.MessageRead(
+        id=ai_msg.id,
+        sender=ai_msg.sender,
+        content=ai_msg.content,
+        timestamp=ai_msg.timestamp  # adjust field if your model uses a different name
+    )
+
+
+# ──────────────────────────────────────────────
+# POST /agent/{conversation_id}/stream
+# Streams the assistant's reply via SSE (EventSource)
+# ──────────────────────────────────────────────
+@router.post("/{conversation_id}/stream")
+async def stream_reply(
+    conversation_id: str,
+    msg_in: schemas.MessageCreate,
+    db: Session = Depends(deps.get_db),
+    user: models.User = Depends(deps.get_current_user),
+):
+    conv = (
+        db.query(models.Conversation)
+        .filter_by(id=conversation_id, user_id=user.id)
+        .first()
+    )
+    if not conv:
+        raise HTTPException(404, "Conversation not found.")
+
+    raw_state = getattr(conv, "state", None)
+    state = AgentState(**raw_state) if raw_state else AgentState()
+
+    def token_stream():
+        # Run agent step (non-streaming)
+        result = run_agent_step(state, msg_in.content, conversation_id)
+        full_reply = result["reply"]
+        updated_state = result["updated_state"]
+
+        # Persist messages and state
         user_msg = models.Message(
-            conversation_id=conv_id,
+            conversation_id=conv.id,
             sender="user",
             content=msg_in.content
         )
-        db.add(user_msg); db.commit(); db.refresh(user_msg)
-
-        # 3) Pull API key
-        api_key = os.getenv("HF_TOKEN") or os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise HTTPException(500, "Missing HF_TOKEN / OPENROUTER_API_KEY env var")
-
-        # 4) Build the agent executor
-        executor = get_agent_executor(api_key)
-
-        # 5) Invoke agent with fixed-interval retries on 503
-        inputs = {
-            "input": msg_in.content,
-            "history": [],              # replace with real history as needed
-            "agent_scratchpad": []      # must be a list, not a string
-        }
-
-        last_error = None
-        for attempt in range(1, 1001):
-            try:
-                result = executor.invoke(inputs)
-                break
-            except HTTPStatusError as e:
-                last_error = e
-                if e.response.status_code == 503:
-                    logger.warning(f"Attempt {attempt}/1000: received 503, retrying in 5s...")
-                else:
-                    logger.error(f"Attempt {attempt}/1000: HTTP {e.response.status_code}, aborting")
-                    raise HTTPException(502, f"LLM HTTP error {e.response.status_code}")
-            except Exception as e:
-                last_error = e
-                if "503" in str(e):
-                    logger.warning(f"Attempt {attempt}/1000: encountered 503, retrying in 5s...")
-                else:
-                    logger.error(f"Attempt {attempt}/1000: non-retryable error: {e}")
-                    raise HTTPException(500, "Unexpected error during LLM call")
-            time.sleep(5)
-        else:
-            logger.error(f"All 1000 retries failed: {last_error}")
-            raise HTTPException(502, "LLM service unavailable after multiple retries")
-
-        # 6) Post-process: strip internal think blocks
-        raw_reply = result.get("output", "").strip()
-        if "</think>" in raw_reply:
-            # drop everything up to and including the last </think>
-            reply = raw_reply.split("</think>")[-1].strip()
-        else:
-            reply = raw_reply
-
-        # 7) Save assistant message
         ai_msg = models.Message(
-            conversation_id=conv_id,
+            conversation_id=conv.id,
             sender="assistant",
-            content=reply
+            content=full_reply
         )
-        db.add(ai_msg); db.commit(); db.refresh(ai_msg)
+        db.add_all([user_msg, ai_msg])
+        if hasattr(conv, "state"):
+            conv.state = updated_state.dict()
+        db.commit()
 
-        logger.info(f"Agent end: sent id={ai_msg.id}")
-        return ai_msg
+        # Stream character by character
+        for char in full_reply:
+            yield f"data: {char}\n\n"
+            time.sleep(0.015)
 
-    except HTTPException:
-        raise
-    except Exception:
-        tb = traceback.format_exc()
-        logger.error(f"Unhandled error in send_message:\n{tb}")
-        raise HTTPException(500, "Internal server error — see logs for details")
+        yield "event: done\ndata: END\n\n"
+
+    return StreamingResponse(token_stream(), media_type="text/event-stream")

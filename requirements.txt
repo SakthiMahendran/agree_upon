@@ -1,11 +1,19 @@
 fastapi
-uvicorn[standard]
+uvicorn
 sqlalchemy
-alembic
 pydantic
-python-dotenv
 passlib[bcrypt]
 python-jose[cryptography]
-langchain-openai
+python-dotenv
 langchain
+langchain-openai
 httpx
+
+# LangChain core + OpenAI + community integrations
+langchain
+langchain-openai
+langchain-community
+
+# Optional (to avoid duplicate/conflicting installs)
+pydantic[email]
+bcrypt

@@ -1,16 +1,15 @@
-from pydantic import BaseModel, Field
-from typing import Dict, Any, List
+from typing import Optional, List
+from pydantic import BaseModel
 
 class AgentState(BaseModel):
-    session_id: str
-    user_input: str = ""
-    document_type: str = ""
-    required_fields: List[str] = Field(default_factory=list)
-    current_field: str = ""
-    collected_info: Dict[str, Any] = Field(default_factory=dict)
-    draft: str = ""
-    placeholders_found: List[str] = Field(default_factory=list)
-    refine_request: str = ""
-    final_document: str = ""
-    error_message: str = ""
-    has_drafted_once: bool = False
+    stage: Optional[str] = "q_and_a"
+    document_type: Optional[str] = None
+    required_fields: Optional[List[str]] = []
+    collected_info: dict = {}
+    current_field: Optional[str] = ""
+    draft: Optional[str] = ""
+    placeholders_found: List[str] = []
+    refine_request: Optional[str] = ""
+    final_document: Optional[str] = ""
+    user_input: Optional[str] = ""
+    error_message: Optional[str] = ""
