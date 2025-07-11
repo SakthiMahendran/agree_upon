@@ -362,3 +362,120 @@ while True:
 ✓ No other files need modification.
 
 --- End of package ---
+
+solution 
+
+# Upgrade Guide — “Ask-Until-Clean” Drafting
+
+*(logic explanation + concrete change list you can paste into Vibe Coding)*
+
+---
+
+## 🌐 How the new flow works (plain English)
+
+1. **Generate a draft.**
+   `document_drafter_chain` turns the currently-known field values into a full document.
+
+2. **Check the draft for leftover tokens** like `[DATE]`, `[PARTY_ADDRESS]`.
+   `placeholder_checker_chain` now returns one JSON object:
+
+```json
+{ "is_success": true|false, "missing_desc": "natural language list of what’s still empty" }
+```
+
+3. **Branch on the result**
+
+   * **Success (`is_success == true`)** → send the polished draft to the user, stop.
+   * **Failure (`is_success == false`)** → fall back to the conversational chain:
+
+     > “I am an internal checker. The draft is missing: *effective date, addresses* — please ask the user for these details.”
+
+   The conversational chain politely asks the user, captures the answers, and emits `update_needed_values`. The runner merges those into state and goes back to step 1.
+
+4. **Guard against endless loops.**
+   If the agent has already asked twice (`MAX_USER_PROMPTS = 2`) and the user still hasn’t supplied the data, it exits gracefully:
+
+> “I’m still missing details. Let’s continue once you have them.”
+
+This guarantees either a placeholder-free draft *or* a controlled, polite stop.
+
+---
+
+## 🛠  What to change (file-by-file)
+
+| File                                            | Change                                                                                                                                                                           |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`agent/chains/placeholder_checker_chain.py`** | *Replace* the Pydantic model with:<br>`class PlaceholderCheckOut(BaseModel): is_success: bool; missing_desc: str`<br>*Replace* the prompt with the three-line logic shown below. |
+| **`AgentState` dataclass / pydantic model**     | Add `missing_prompt_count: int = 0`.                                                                                                                                             |
+| **`agent/agent_runner.py`**                     | Remove the old regex-retry loop. Add the new orchestration block (≈25 lines) shown below.                                                                                        |
+
+### 🔑 New checker prompt (copy verbatim)
+
+```
+Scan the draft below.
+
+• If NO tokens like [DATE] remain:
+  return {"is_success": true, "missing_desc": ""}
+
+• Otherwise:
+  return {"is_success": false, "missing_desc": "<short English list of what’s missing>"}
+
+Return ONLY that JSON. No other text.
+
+Draft:
+{draft}
+```
+
+### 🔑 New runner logic (insert where the old placeholder code was)
+
+```python
+MAX_USER_PROMPTS = 2
+
+draft_raw = drafter.run({...})
+draft     = drafter_parser.parse(draft_raw)["draft"]
+
+check_raw = placeholder_checker.run({"draft": draft})
+check     = checker_parser.parse(check_raw)
+
+if check.is_success:                          # ➊ clean → finish
+    state.draft = draft
+    reply_to_user = "✅ All set! Your document is fully drafted. Let me know if you'd like any edits."
+    _persist(memory, conv_id, user_input, reply_to_user, state)
+    return
+
+if state.missing_prompt_count >= MAX_USER_PROMPTS:   # ➋ give up politely
+    reply_to_user = (
+        "I'm still missing details (" + check.missing_desc +
+        "). Let's continue once you have them."
+    )
+    _persist(memory, conv_id, user_input, reply_to_user, state)
+    return
+
+state.missing_prompt_count += 1                       # ➌ ask user
+system_addition = (
+    "I am an internal checker. The draft is missing: " +
+    check.missing_desc +
+    ". Please ask the user for these details."
+)
+
+conv_raw  = conversational_chain.run({
+    "system_addition": system_addition,
+    **standard_inputs
+})
+conv_cmds = conv_parser.parse(conv_raw)
+_apply_commands(conv_cmds)            # merges user answers into state
+return                                 # wait for next turn
+```
+
+---
+
+## 🔒  Safety & validation
+
+* **Type checking:** the conversational chain prompt already instructs the LLM to ensure answers match expected formats.
+* **Second line of defence (optional):** after `_apply_commands`, run lightweight regex/date parsers; if a value fails validation, ignore it and prompt again.
+
+---
+
+### Result
+
+*User sees at most two polite follow-up questions; you never deliver a document with `[PLACEHOLDERS]`; and the codebase changes only in one chain, one dataclass field, and one runner block.*

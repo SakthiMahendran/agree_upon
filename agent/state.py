@@ -16,6 +16,7 @@ class AgentState(BaseModel):
     needed_fields: Dict[str, str] = {}        # { "Party A Name": "Alice LLC", … }
     draft: str = ""                           # Full draft (multiline)
     is_drafted: bool = False                  # True ⇢ draft has been generated
+    missing_prompt_count: int = 0             # Times user has been asked for missing details
 
     # ──────────────────────────────
     # Internal helpers (not exposed)

@@ -48,15 +48,27 @@ def invoke_with_retry(
             return chain_or_runnable(inputs)
 
         except Exception as exc:
+            # Retry logic only for transient HTTP 503 / rate-limit style errors
+            transient = False
+            msg = str(exc).lower()
+            if "status code: 503" in msg or "503" in msg:
+                transient = True
+            if "rate limit" in msg or "temporarily unavailable" in msg:
+                transient = True
+
+            if not transient:
+                raise  # propagate other errors immediately
+
             logger.warning(
-                "⚠️ invoke_with_retry (%d/%d) failed: %s",
+                "⚠️ invoke_with_retry (%d/%d transient) failed: %s",
                 attempt,
                 max_retries,
                 exc,
             )
             if attempt == max_retries:
                 raise
-            time.sleep(10)
+            # Exponential backoff: 10s * attempt
+            time.sleep(10 * attempt)
 
 # ────────────────────────────────────────────────────────────
 # Text-cleanup helpers

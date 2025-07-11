@@ -55,10 +55,13 @@ parser = SimpleDraftOutputParser()
 # ────────────────────────────
 _DRAFTER_PROMPT = PromptTemplate(
     input_variables=["document_type", "filled_fields_json",
-                     "current_draft", "instruction"],
+                     "current_draft", "instruction", "history"],
     template=r"""
 You are a veteran legal drafter.
 
+────────────────────────────────────────────
+Conversation history (for reference, you can also refer deep into this history to extract key details):
+{history}
 ────────────────────────────────────────────
 📝 Document type: {document_type}
 📑 Field values (JSON): {filled_fields_json}
@@ -70,7 +73,9 @@ You are a veteran legal drafter.
 
 TASK:
 • Produce a *clean*, professional draft in plain text.
-• No placeholders like [DATE] – substitute actual field values.
+• STRICT: Only use the provided field values in your draft. Do NOT invent or guess any values.
+• Placeholders or tokens like [DATE], [NAME], etc. are STRICTLY FORBIDDEN – your draft MUST NOT contain any placeholders under any circumstances.
+• Carefully review your draft before returning: ensure every field is filled with real, concrete values from the input and that no placeholders remain.
 • NO boilerplate like "Here is your draft".
 • Return only compact JSON exactly:
 
@@ -86,10 +91,18 @@ No markdown, no commentary.
 )
 
 
-def get_document_drafter_chain() -> LLMChain:
-    return LLMChain(
+from agent.memory import SQLBufferMemory
+
+def get_document_drafter_chain(memory: "SQLBufferMemory | None" = None) -> LLMChain:
+    # If memory is provided and 'user_input' is not among input_variables, set input_key=None to avoid KeyError
+    use_input_key = memory is None or "user_input" in _DRAFTER_PROMPT.input_variables
+    llmchain_kwargs = dict(
         llm=llm_chain,
         prompt=_DRAFTER_PROMPT.partial(format_instructions=parser.get_format_instructions()),
+        memory=memory,
         output_key="text",
         verbose=True,
     )
+    if use_input_key:
+        llmchain_kwargs["input_key"] = "user_input"
+    return LLMChain(**llmchain_kwargs)
