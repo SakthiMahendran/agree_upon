@@ -19,6 +19,7 @@ logger.setLevel(logging.INFO)
 # ────────────────────────────────
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
+print("HF_TOKEN", HF_TOKEN)
 if not HF_TOKEN:
     raise RuntimeError("Missing HF_TOKEN environment variable")
 
@@ -35,8 +36,17 @@ llm_chain: Runnable = ChatOpenAI(
     streaming=True,
 )
 
-#DeepSeekR1-1q1
+#DeepSeekOpenRouter
+# llm_chain: Runnable = ChatOpenAI(
+#     model="deepseek/deepseek-chat-v3-0324:free",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
+#     openai_api_base="https://openrouter.ai/api/v1",
+#     openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+#     temperature=0.3,
+#     max_tokens=8192,
+#     streaming=True,
+# )
 
+#DeepSeekR1-1q1
 # llm_chain: Runnable = ChatOpenAI(
 #     model="deepseek-chat",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
 #     openai_api_base="https://qwryad273mlndckn.us-east-1.aws.endpoints.huggingface.cloud/v1/",

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from agent.state import AgentState
 from agent.memory import get_memory, SQLBufferMemory
@@ -37,6 +37,23 @@ logger.setLevel(logging.DEBUG)
 # ─────────────────────────────────────────────────────────────
 # Helper – normalise LLM / chain return types
 # ─────────────────────────────────────────────────────────────
+def _stringify_values(d: Dict[str, Any]) -> Dict[str, str]:
+    """Ensure all dict values are plain strings (JSON-encoded if needed)."""
+    out: Dict[str, str] = {}
+    for k, v in d.items():
+        if isinstance(v, str):
+            out[k] = v
+        else:
+            # Fallback – JSON-encode non-string values (e.g. nested dicts)
+            try:
+                out[k] = json.dumps(v, ensure_ascii=False)
+            except TypeError:
+                out[k] = str(v)
+    return out
+
+# ─────────────────────────────────────────────────────────────
+# Helper – normalise LLM / chain return types
+
 def _extract_text(res: Any) -> str:
     if isinstance(res, str):
         return res
@@ -97,7 +114,7 @@ def run_agent_step(state: AgentState, user_input: str, conversation_id: str):
     field_fallback_raw = parsed.get("update_needed_values", {}) or {}
     if field_fallback_raw:
         if isinstance(field_fallback_raw, dict):
-            state.needed_fields.update(field_fallback_raw)
+            state.needed_fields.update(_stringify_values(field_fallback_raw))
         else:
             # Handle cases where the LLM returns a list/tuple of key–value pairs
             try:
@@ -131,7 +148,7 @@ def run_agent_step(state: AgentState, user_input: str, conversation_id: str):
                 new_vals_raw = parsed.get("update_needed_values", {})
                 if new_vals_raw:
                     if isinstance(new_vals_raw, dict):
-                        state.needed_fields.update(new_vals_raw)
+                        state.needed_fields.update(_stringify_values(new_vals_raw))
                     else:
                         try:
                             state.needed_fields.update(dict(new_vals_raw))
@@ -223,7 +240,7 @@ def run_agent_step(state: AgentState, user_input: str, conversation_id: str):
 
                         if follow_parsed:
                             new_vals = follow_parsed.get("update_needed_values", {})
-                            state.needed_fields.update(new_vals)
+                            state.needed_fields.update(_stringify_values(new_vals))
 
                         # We echo the missing description back to the user
                         reply_to_user = check.missing_desc
