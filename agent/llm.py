@@ -30,7 +30,7 @@ if not HF_TOKEN:
 llm_chain: Runnable = ChatOpenAI(
     model="deepseek-chat",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
     openai_api_base="https://oaitzvyxm6614ekn.us-east-1.aws.endpoints.huggingface.cloud/v1/",
-    openai_api_key=HF_TOKEN,
+    openai_api_key=os.getenv("HF_TOKEN"),
     temperature=0.3,
     max_tokens=8192,
     streaming=True,
@@ -50,7 +50,7 @@ llm_chain: Runnable = ChatOpenAI(
 # llm_chain: Runnable = ChatOpenAI(
 #     model="deepseek-chat",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
 #     openai_api_base="https://qwryad273mlndckn.us-east-1.aws.endpoints.huggingface.cloud/v1/",
-#     openai_api_key=HF_TOKEN,
+#     openai_api_key=os.getenv("HF_TOKEN"),
 #     temperature=0.3,
 #     max_tokens=8192,
 #     streaming=True,
