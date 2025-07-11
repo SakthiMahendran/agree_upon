@@ -1,0 +1,685 @@
+Your are an genius GenAI engineer and I basically want to update the Langchain logic for me 
+
+    update the agent state like this 
+        AgentStat:
+            document_type: str -> This says the type of the doucment like NDA, Lease Agreement etc
+            needed_fields: Dict[str, str] -> This says the fields that are needed to draft the document like Legal Name, Date of Birth etc
+            draft: str -> This contains the actual document draft this is a multiline string with the complete document draft
+            is_drafted: bool -> This says if the document is drafted or not
+
+        and we have two chanis 
+            1. ConversationalLegalChain
+            2. DocumentDrafterChain
+        
+        The ConversationalLegalChain can be be renamed to ConversationalLegal Chain it's job is 
+        to collect the document type, needed_fields for drafting the document and more importantnly
+        it should have a natural conversation with the user and collect those details and clarify the 
+        users doubts... This data will be updated in the AgentState once it is confident it can give this
+        data in formatted way to update the state of the agent and proceed further
+        The agent will output this in a well stucutred json format
+            Output:
+                actions: List[str] -> This says the actions that need to be taken
+                the possible actions are update_document_type, update_needed_values, update_document 
+                user_replay: -> An replay message to the user 
+                IF update_document_type then update_document_type = DOC_TYPE, else update_document_type = NONE
+                IF update_needed_values = List[str] of needed values this will directly replaced in the needed_fields
+                of the Agent State so if already there is 5 values exist and then only one value two be added this should 
+                output 6 values instead of just one
+                IF update_document then output updat_doucment_instruction = INSTRCTION, this will be used 
+                by another doucment drafting chain for drafting the doucment you only have to instruction have 
+                to draft it or what is the changes need to be done that chain will get info like 
+                    INPUT_FOR_UPDATE_DOCUMENT:
+                        agent_state_document_type: str -> This is the document type from the agent state
+                        agent_state_needed_values: List[str] -> This is the needed values from the agent state
+                        agent_state_draft: str -> This is the draft from the agent state
+                        agent_state_is_drafted: bool -> This is the is_drafted from the agent state
+                        
+        This will have inputs like 
+                            INPUTS:
+                                user_input: str -> This is the user input
+                                agent_state_needed_values: List[str] -> This is the needed values from the agent state
+                                agent_state_document_type: str -> This is the document type from the agent state
+                                agent_is_drafted: bool -> This is the is_drafted from the agent state
+
+and more over the agent should also enforce these conditions like 
+    1. If the document is then the agent should not allow the user to a new doucment with 
+        new doucment type that is not allowed the user can refine or modify the existing ducument
+        so basically if the doucment type is assinged and the doucment also drafted then no chaing 
+        the doucment type again this is the logic but the user can change the doucment type before 
+        drafting
+
+    2. And while the conversation the agent should also warn if user said something wrong or
+    while modifiying the doucment or during any task if user is wrong it should warn and ask the
+    user to double check once the user is double checked it can proceed furhter 
+
+
+I am having previouoly workig code that you can update to get thsi logic working I only need to 
+user langchain no langgraph and I think this can be done via tools do this via the best and 
+robust solution find the best way to do this and give me complete updated code file by file 
+
+------------
+
+"""
+agent/router.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Defines a conversational router that:
+  • Inspects conversation `history`, incoming `user_input`, and current `state_json`.
+  • Routes to one of six stages or replies directly (qna).
+
+Outputs a JSON string matching `RouterOutput` schema:
+  {"destination": "<stage>", "next_inputs": { ... }}
+
+Stages: identify_doc · collect_fields · generate_draft · await_placeholder · await_refine · qna
+"""
+from enum import Enum
+from typing import Any, Dict
+
+from pydantic import BaseModel, Field, validator
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+
+from agent.llm import llm_chain
+
+
+# ────────────────────────────────────────────────────────────
+# Stage enumeration
+# ────────────────────────────────────────────────────────────
+class StageEnum(str, Enum):
+    identify_doc      = "identify_doc"
+    collect_fields    = "collect_fields"
+    generate_draft    = "generate_draft"
+    await_placeholder = "await_placeholder"
+    await_refine      = "await_refine"
+    qna               = "qna"
+
+
+# ────────────────────────────────────────────────────────────
+# Router output schema (validated in agent_runner)
+# ────────────────────────────────────────────────────────────
+class RouterOutput(BaseModel):
+    destination: StageEnum = Field(..., description="Next chain/stage to invoke")
+    next_inputs: Dict[str, Any] = Field(
+        ..., description="Inputs for the next stage or direct reply"
+    )
+
+    @validator("next_inputs")
+    def ensure_input_key(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        if "input" not in v:
+            raise ValueError("`next_inputs` must include an `input` key")
+        return v
+
+
+# ────────────────────────────────────────────────────────────
+# Prompt template
+# ────────────────────────────────────────────────────────────
+router_prompt = PromptTemplate(
+    input_variables=["user_input", "history", "state_json"],
+    template=r"""
+You are the **controller** for a legal‑document assistant.
+
+Your job is to:
+1. **Select exactly one stage** from the options below.
+2. Produce the JSON payload described after the stage list.
+
+---
+🧭 **Stages & what to do**
+
+• "identify_doc"      → Ask clarifying question(s) to discover doc type.
+• "collect_fields"     → Ask for ONE missing field.
+• "generate_draft"     → Output a clean, filler‑free legal draft.
+• "await_placeholder"  → Ask for concrete value for each [PLACEHOLDER].
+• "await_refine"       → Confirm / apply user’s refine instructions.
+• "qna"                → Casual Q&A / small talk (no doc workflow).
+
+---
+🧠 **Message formatting rule**
+If destination == "qna" → `next_inputs.input` = direct user reply (natural language).
+Otherwise                → `next_inputs.input` = instruction for the downstream chain.
+
+---
+🧾 **Return ONLY valid JSON. No markdown, no commentary.**
+
+{{
+  "destination": "<stage>",
+  "next_inputs": {{ "input": "<message>" }}
+}}
+
+---
+💬 **History**
+{history}
+
+🧑 **User**
+{user_input}
+
+📦 **State**
+{state_json}
+"""
+)
+
+
+# ────────────────────────────────────────────────────────────
+# Factory
+# ────────────────────────────────────────────────────────────
+def build_conversational_router(memory) -> LLMChain:
+    """Return an LLMChain that emits the routing JSON."""
+    return LLMChain(
+        llm=llm_chain,
+        prompt=router_prompt,
+        memory=memory,
+        output_key="text"  # Required by LangChain ≥0.1; our runner extracts .text
+    )
+
+----------------------
+"""
+agent/agent_runner.py
+━━━━━━━━━━━━━━━━━━━━
+Orchestrates the legal-assistant workflow.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, Dict
+
+from agent.state import AgentState
+from agent.memory import get_memory, SQLBufferMemory
+from agent.router import build_conversational_router, RouterOutput
+from agent.utils import (
+    invoke_with_retry,
+    _clean_llm_text,
+    _first_json_block,
+    safe_parse_json_block,
+    salvage_json,
+    detect_placeholders,
+    strip_llm_fluff,
+    is_finalization_command,
+)
+
+from agent.chains.doc_type_chain import get_doc_type_chain
+from agent.chains.field_collector_chain import get_field_collector_chain
+from agent.chains.draft_generator_chain import get_draft_generator_chain
+from agent.chains.placeholder_checker import get_placeholder_checker_chain
+from agent.chains.refiner_chain import get_refiner_chain
+
+from api.models import Message  # adjust if your path differs
+
+logger = logging.getLogger("agent.runner")
+logger.setLevel(logging.DEBUG)
+
+
+# ────────────────────────────────────────────────────────────
+# Helpers
+# ────────────────────────────────────────────────────────────
+def _ctx(history: str, user_in: str, extra: Dict[str, Any]) -> Dict[str, Any]:
+    """Consistent input schema for specialised chains."""
+    return {"history": history, "input": user_in, **extra}
+
+
+def _extract_llm_text(raw_result: Any) -> str:
+    """
+    LangChain Runnables can return:
+      • str
+      • dict  → {'text': '…'}
+      • BaseMessage → .content
+      • ChatGeneration → .text
+    This function normalises all of them into a *plain string*.
+    """
+    # 1) Already a plain str
+    if isinstance(raw_result, str):
+        return raw_result
+
+    # 2) LangChain generation dict
+    if isinstance(raw_result, dict):
+        if "text" in raw_result:
+            return str(raw_result["text"])
+        # Sometimes LLM wrappers return {'output': '…'}
+        if "output" in raw_result:
+            return str(raw_result["output"])
+
+    # 3) ChatMessage-like object
+    if hasattr(raw_result, "content"):
+        return str(raw_result.content)
+
+    # 4) ChatGeneration or Generic with .text
+    if hasattr(raw_result, "text"):
+        return str(raw_result.text)
+
+    # 5) Fallback – stringified object
+    return str(raw_result)
+
+
+# ────────────────────────────────────────────────────────────
+# Main turn handler
+# ────────────────────────────────────────────────────────────
+def run_agent_step(state: AgentState, user_input: str, conversation_id: str):
+    """
+    Execute one interaction turn:
+      1. Call router LLM
+      2. Parse / salvage JSON decision
+      3. Dispatch to specialised chain (if not 'qna')
+      4. Update state, memory, DB
+      5. Return assistant reply + updated state
+    """
+    # ➊  Memory + router
+    memory: SQLBufferMemory = get_memory(conversation_id)
+    router_chain            = build_conversational_router(memory)
+
+    logger.debug("🔄 run_agent_step | conv_id=%s | stage=%s",
+                 conversation_id, state.stage)
+
+    # ➋  Call router with retry
+    raw_result = invoke_with_retry(
+        router_chain,
+        {"user_input": user_input, "state_json": json.dumps(state.dict())},
+    )
+
+    raw_text = _extract_llm_text(raw_result)
+
+    # Print for local debugging
+    print("\n🔵 RAW router output (pre-clean):\n", raw_text, "\n")
+
+    logger.debug("📝 RAW router output:\n%s", raw_text)
+
+    # ➌  Clean + first JSON block
+    cleaned    = _clean_llm_text(raw_text)
+    json_block = _first_json_block(cleaned)
+    parsed     = safe_parse_json_block(json_block) if json_block else None
+
+    # ➍  Salvage if needed
+    if not parsed or "destination" not in parsed:
+        logger.warning("⚠️ First parse failed — attempting salvage.")
+        parsed = salvage_json(cleaned)
+
+    # ➎  Total failure ➜ ask user to rephrase
+    if not parsed or "destination" not in parsed:
+        logger.error(
+            "❌ Unparsable router output.\nRAW:\n%s\nCLEANED:\n%s\nBLOCK:\n%s",
+            raw_text, cleaned, json_block,
+        )
+        return {
+            "reply": "⚠️ I hit a parsing snag—could you rephrase?",
+            "updated_state": state,
+        }
+
+    # ➏  Interpret router decision
+    router_decision = RouterOutput.parse_obj(parsed)
+    dest, next_inputs = router_decision.destination, router_decision.next_inputs
+    logger.info("🏷 Router chose %s", dest)
+
+    # ➐  Direct Q&A
+    if dest == "qna":
+        return {"reply": next_inputs["input"], "updated_state": state}
+
+    # ➑  Specialised chain invocation
+    history = memory.load_memory_variables({}).get("history", "")
+    try:
+        if dest == "identify_doc":
+            result = invoke_with_retry(
+                get_doc_type_chain(),
+                _ctx(history, user_input, next_inputs),
+            )
+
+        elif dest == "collect_fields":
+            result = invoke_with_retry(
+                get_field_collector_chain(state.document_type),
+                _ctx(history, user_input, next_inputs),
+            )
+
+        elif dest == "generate_draft":
+            result = invoke_with_retry(
+                get_draft_generator_chain(state.document_type,
+                                          state.collected_fields),
+                _ctx(history, user_input, next_inputs),
+            )
+
+        elif dest == "await_placeholder":
+            raw = invoke_with_retry(
+                get_placeholder_checker_chain(),
+                _ctx(history, user_input, next_inputs),
+            )
+            result = {"placeholders": json.loads(_clean_llm_text(str(raw)))}
+
+        elif dest == "await_refine":
+            result = invoke_with_retry(
+                get_refiner_chain(),
+                _ctx(history, user_input, next_inputs),
+            )
+
+        else:
+            result = {}
+
+        logger.debug("🔙 Chain result: %s", result)
+
+    except Exception as exc:
+        logger.error("❌ Chain error: %s", exc, exc_info=True)
+        result = {}
+
+    # ➒  State machine & reply
+    reply = "🤔 Could you clarify that?"
+
+    if "document_type" in result:
+        state.document_type = result["document_type"]
+        state.stage         = "collect_fields"
+        reply = (f"📄 Great—drafting a {state.document_type}. "
+                 f"What info do we need first?")
+
+    elif "fields" in result:
+        state.collected_fields.update(result["fields"])
+        missing               = result.get("missing", [])
+        state.required_fields = missing
+
+        if missing:
+            state.stage = "collect_fields"
+            reply = f"❓ Please provide: {missing[0]}"
+        else:
+            state.stage = "generate_draft"
+            reply = "✅ All fields collected. Generating your draft..."
+
+    elif "draft" in result:
+        state.draft              = strip_llm_fluff(result["draft"])
+        state.placeholders_found = detect_placeholders(state.draft)
+
+        if state.placeholders_found:
+            state.stage = "await_placeholder"
+            reply = (f"⚠️ Found placeholders: {state.placeholders_found}. "
+                     "Please fill them in.")
+        else:
+            state.stage = "await_refine"
+            reply = "✅ Draft ready. Any refinements?"
+
+    elif "placeholders" in result:
+        ph = state.placeholders_found.pop(0) if state.placeholders_found else None
+        if ph:
+            state.collected_fields[ph] = user_input.strip()
+            state.draft = state.draft.replace(ph, state.collected_fields[ph])
+
+        if state.placeholders_found:
+            reply = f"🔁 Next placeholder: {state.placeholders_found[0]}"
+        else:
+            state.stage = "await_refine"
+            reply = "✅ All placeholders resolved. Ready to refine?"
+
+    elif "refined_draft" in result:
+        state.draft = strip_llm_fluff(result["refined_draft"])
+        reply = "✏️ Draft updated. Anything else?"
+
+    # ➓  Finalisation
+    if state.stage == "await_refine" and is_finalization_command(user_input):
+        state.final_document = state.draft
+        reply = "📝 Your document has been finalised. Thank you!"
+
+    # ⓫  Persist reply
+    memory.chat_memory.add_ai_message(reply)
+    memory.db.add(
+        Message(
+            conversation_id=int(conversation_id),
+            sender="assistant",
+            content=reply,
+        )
+    )
+    memory.db.commit()
+
+    return {"reply": reply, "updated_state": state}
+
+
+----------------------
+"""
+agent/utils.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Shared helper utilities for the legal-assistant agent.
+
+• invoke_with_retry        – resilient LLM / chain invocation
+• _clean_llm_text          – strips <think> blocks, markdown fences, whitespace
+• _first_json_block        – extracts first {...} that contains "destination"
+• safe_parse_json_block    – tolerant JSON→dict loader
+• salvage_json             – multi-strategy JSON extraction fallback
+• detect_placeholders      – finds tokens like [DATE], [NAME]
+• strip_llm_fluff          – removes “Here is …” boilerplate
+• is_finalization_command  – simplistic “sign-off” detector
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import logging
+import re
+import time
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger("agent.utils")
+logger.setLevel(logging.DEBUG)
+
+# ────────────────────────────────────────────────────────────
+# Retry wrapper  ⬅︎ updated
+# ────────────────────────────────────────────────────────────
+def invoke_with_retry(
+    chain_or_runnable,
+    inputs: Dict[str, Any],
+    max_retries: int = 100,
+):
+    """
+    Invoke *any* LangChain object (Runnable, Chain, or plain callable)
+    with simple exponential-backoff retry.
+
+    • Prefers `.invoke()` if available   (LangChain ≥ 0.1)
+    • Falls back to `.run()`             (legacy LLMChain / ConversationChain)
+    • Finally, treats the object as a plain callable `obj(inputs)`
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Modern Runnable interface
+            if hasattr(chain_or_runnable, "invoke"):
+                return chain_or_runnable.invoke(inputs)
+
+            # Legacy `.run(**kwargs)` interface
+            if hasattr(chain_or_runnable, "run"):
+                if isinstance(inputs, dict):
+                    return chain_or_runnable.run(**inputs)  # unpack kwargs
+                return chain_or_runnable.run(inputs)
+
+            # Fallback – assume plain callable
+            return chain_or_runnable(inputs)
+
+        except Exception as exc:
+            logger.warning(
+                "⚠️ invoke_with_retry (%d/%d) failed: %s",
+                attempt,
+                max_retries,
+                exc,
+            )
+            if attempt == max_retries:
+                raise
+            time.sleep(10)
+
+# ────────────────────────────────────────────────────────────
+# Text-cleanup helpers
+# ────────────────────────────────────────────────────────────
+_THINK_END_RE          = re.compile(r"</think>", re.IGNORECASE)
+_CODE_FENCE_START_RE   = re.compile(r"^\s*```[a-zA-Z0-9_-]*\s*")
+_CODE_FENCE_END_RE     = re.compile(r"\s*```\s*$")
+
+def _clean_llm_text(text: str) -> str:
+    """
+    Strip <think> … </think> blocks *and* leading / trailing code fences.
+    Leaves inner JSON untouched.
+    """
+    # Drop everything up to the last </think>
+    m = list(_THINK_END_RE.finditer(text))
+    if m:
+        text = text[m[-1].end():]
+
+    # Remove code-fence lines
+    text = _CODE_FENCE_START_RE.sub("", text)
+    text = _CODE_FENCE_END_RE.sub("", text)
+    return text.strip()
+
+# ────────────────────────────────────────────────────────────
+# Balanced-brace JSON extraction helpers
+# ────────────────────────────────────────────────────────────
+def _iterate_json_candidates(text: str):
+    """
+    Yield every balanced {...} substring in *source order*.
+    Handles nested braces and ignores braces inside strings.
+    """
+    depth   = 0
+    start   = None
+    in_str  = False
+    escape  = False
+
+    for i, ch in enumerate(text):
+        if ch == '"' and not escape:
+            in_str = not in_str
+        escape = (ch == "\\" and not escape)
+
+        if in_str:
+            continue
+
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                yield text[start : i + 1]
+                start = None
+
+def _first_json_block(text: str) -> Optional[str]:
+    """
+    Return the *first* balanced JSON block that *contains* the
+    required `"destination"` key.
+    """
+    for block in _iterate_json_candidates(text):
+        if '"destination"' in block or "'destination'" in block:
+            return block
+    return None
+
+# ────────────────────────────────────────────────────────────
+# Tolerant JSON loader
+# ────────────────────────────────────────────────────────────
+_SINGLE_TO_DOUBLE_RE = re.compile(r"'([^']+?)'")
+
+def safe_parse_json_block(block: str) -> Optional[Dict[str, Any]]:
+    """
+    Attempt to turn *almost*-JSON into a dict:
+
+    1. json.loads            – strict JSON
+    2. single→double quotes  – quick-fix for common LLM slip
+    3. ast.literal_eval      – last-chance Python dict parsing
+    """
+    try:
+        return json.loads(block)
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        converted = _SINGLE_TO_DOUBLE_RE.sub(r'"\1"', block)
+        return json.loads(converted)
+    except json.JSONDecodeError:
+        pass
+
+    try:
+        return ast.literal_eval(block)
+    except Exception:
+        return None
+
+# ────────────────────────────────────────────────────────────
+# Fallback JSON-extraction strategies
+# ────────────────────────────────────────────────────────────
+_JSON_FENCE_RE = re.compile(
+    r"```json\s*({[\s\S]+?})\s*```",
+    re.IGNORECASE,
+)
+
+def salvage_json(text: str) -> Optional[Dict[str, Any]]:
+    """
+    Robust, multi-strategy JSON extraction:
+
+    1. Inside ```json … ``` fenced blocks
+    2. Scan *all* balanced groups for “destination”
+    3. Reverse scan for the **last** brace group containing “destination”
+    """
+    # 1) Fenced ```json … ```
+    for m in _JSON_FENCE_RE.finditer(text):
+        block  = m.group(1)
+        parsed = safe_parse_json_block(block)
+        if parsed and "destination" in parsed:
+            logger.debug("🛟 Salvaged JSON from fenced block.")
+            return parsed
+
+    # 2) Any balanced group
+    for block in _iterate_json_candidates(text):
+        if '"destination"' not in block and "'destination'" not in block:
+            continue
+        parsed = safe_parse_json_block(block)
+        if parsed and "destination" in parsed:
+            logger.debug("🛟 Salvaged JSON from balanced scan.")
+            return parsed
+
+    # 3) Reverse scan for last {...} with destination
+    idx = text.rfind("}")
+    while idx != -1:
+        start = text.rfind("{", 0, idx)
+        if start == -1:
+            break
+        block = text[start : idx + 1]
+        if '"destination"' in block:
+            parsed = safe_parse_json_block(block)
+            if parsed and "destination" in parsed:
+                logger.debug("🛟 Salvaged JSON from reverse scan.")
+                return parsed
+        idx = text.rfind("}", 0, start)
+
+    return None
+
+# ────────────────────────────────────────────────────────────
+# Misc helpers
+# ────────────────────────────────────────────────────────────
+_PLACEHOLDER_RE = re.compile(r"\[[A-Z0-9_]+\]")
+
+def detect_placeholders(doc: str) -> List[str]:
+    """Return *unique* placeholder tokens found in the draft."""
+    return list(dict.fromkeys(_PLACEHOLDER_RE.findall(doc)))
+
+_FLUFF_RE = re.compile(
+    r"^\s*(Here is|Below is|Sure[,:\-]?|Certainly[,:\-]?|Here's the)\b[^\n]*\n+",
+    re.IGNORECASE,
+)
+
+def strip_llm_fluff(text: str) -> str:
+    """Remove leading boilerplate phrases that often precede useful output."""
+    return _FLUFF_RE.sub("", text).strip()
+
+_FINAL_CMD_RE = re.compile(
+    r"\b(finalise|finalize|looks\s+good|approved|no\s+further\s+changes)\b",
+    re.IGNORECASE,
+)
+
+def is_finalization_command(user_input: str) -> bool:
+    """Detect a very simple ‘OK, we’re done’ user instruction."""
+    return bool(_FINAL_CMD_RE.search(user_input))
+
+------------------------------------------------------------------------------------
+# agent/state.py
+
+from pydantic import BaseModel
+from typing import Optional, List, Dict
+
+class AgentState(BaseModel):
+    # Start in Q&A fallback
+    stage: str = "qna"
+
+    # Once they indicate they want a document, we'll move into identify_doc, etc.
+    document_type: Optional[str] = None
+
+    required_fields: List[str] = []
+    collected_fields: Dict[str, str] = {}
+
+    draft: str = ""
+    placeholders_found: List[str] = []
+    refine_request: str = ""
+    final_document: str = ""
+    user_input: str = ""
+    error_message: str = ""

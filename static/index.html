@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agree Upon – Legal Drafting Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #2d3748;
+      line-height: 1.6;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Auth Section */
+    #auth-section {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .auth-card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-card h1 {
+      text-align: center;
+      color: #1a202c;
+      font-size: 2.2em;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .auth-card .subtitle {
+      text-align: center;
+      color: #718096;
+      font-size: 1.1em;
+      margin-bottom: 30px;
+    }
+
+    .auth-card h2 {
+      color: #2d3748;
+      font-size: 1.4em;
+      font-weight: 500;
+      margin-bottom: 25px;
+      text-align: center;
+    }
+
+    .auth-card form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .auth-card input {
+      font-size: 1em;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 2px solid #e2e8f0;
+      background: #fff;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+
+    .auth-card input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .auth-card button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      border: none;
+      padding: 14px 20px;
+      border-radius: 12px;
+      font-size: 1.1em;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+
+    .auth-card button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .switch-auth {
+      background: none !important;
+      color: #667eea !important;
+      border: none;
+      margin-top: 15px;
+      cursor: pointer;
+      text-align: center;
+      padding: 10px;
+      font-size: 0.95em;
+      text-decoration: underline;
+      transition: color 0.3s ease;
+    }
+
+    .switch-auth:hover {
+      color: #764ba2 !important;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Main App */
+    #main-app {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      background: #f7fafc;
+    }
+
+    /* Sidebar */
+    #sidebar {
+      width: 280px;
+      background: linear-gradient(180deg, #2d3748 0%, #1a202c 100%);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    #sidebar h2 {
+      margin: 25px 20px 15px 20px;
+      font-size: 1.3em;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    #convo-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 15px;
+    }
+
+    .convo-item {
+      padding: 15px 18px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: #cbd5e0;
+      text-align: left;
+      width: 100%;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      transition: all 0.3s ease;
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+
+    .convo-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      transform: translateX(5px);
+    }
+
+    .convo-item.selected {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .sidebar-actions {
+      padding: 20px;
+      border-top: 1px solid #4a5568;
+      display: flex;
+      gap: 10px;
+    }
+
+    .sidebar-actions button {
+      background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      flex: 1;
+    }
+
+    .sidebar-actions button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(72, 187, 120, 0.3);
+    }
+
+    .sidebar-actions button:disabled {
+      background: #4a5568;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    #delete-convo-btn {
+      background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%) !important;
+    }
+
+    #delete-convo-btn:hover:not(:disabled) {
+      box-shadow: 0 6px 16px rgba(245, 101, 101, 0.3) !important;
+    }
+
+    /* Chat Section */
+    #chat-section {
+      flex: 2;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #e2e8f0;
+      min-width: 0;
+    }
+
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .msg {
+      padding: 16px 20px;
+      border-radius: 18px;
+      max-width: 75%;
+      word-break: break-word;
+      font-size: 1em;
+      line-height: 1.5;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .msg.user {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      align-self: flex-end;
+      margin-left: auto;
+    }
+
+    .msg.agent {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      color: #2d3748;
+      align-self: flex-start;
+      margin-right: auto;
+    }
+
+    #input-row {
+      display: flex;
+      border-top: 1px solid #e2e8f0;
+      padding: 20px;
+      background: #f9fafb;
+      gap: 15px;
+    }
+
+    #user-input {
+      flex: 1;
+      font-size: 1em;
+      padding: 14px 18px;
+      border-radius: 12px;
+      border: 2px solid #e2e8f0;
+      background: #fff;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+
+    #user-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    #input-row button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      border: none;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-size: 1em;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-family: inherit;
+    }
+
+    #input-row button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+    }
+
+    #input-row button:disabled {
+      background: #a0aec0;
+      transform: none;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    /* Document Section */
+    #document-section {
+      flex: 1.3;
+      background: #f9fafb;
+      padding: 30px 25px;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #document-section h2 {
+      margin-top: 0;
+      margin-bottom: 20px;
+      font-size: 1.3em;
+      font-weight: 600;
+      color: #2d3748;
+    }
+
+    #document-content {
+      flex: 1;
+      background: #fff;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e2e8f0;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.95em;
+      color: #2d3748;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      #main-app {
+        flex-direction: column;
+      }
+      
+      #sidebar {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        overflow-x: auto;
+      }
+      
+      .auth-card {
+        margin: 20px;
+        padding: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="auth-section">
+      <div class="auth-card">
+        <h1>Agree Upon</h1>
+        <p class="subtitle">Legal Drafting Assistant</p>
+        <h2 id="auth-title">Welcome Back</h2>
+        <form id="login-form">
+          <input id="login-username" type="text" placeholder="Username" required />
+          <input id="login-password" type="password" placeholder="Password" required />
+          <button type="submit">Sign In</button>
+          <button type="button" class="switch-auth" id="to-register">Don't have an account? Register</button>
+        </form>
+        <form id="register-form" style="display:none;">
+          <input id="register-username" type="text" placeholder="Choose a username" required />
+          <input id="register-password" type="password" placeholder="Create a password" required />
+          <button type="submit">Create Account</button>
+          <button type="button" class="switch-auth" id="to-login">Already have an account? Sign In</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="main-app" style="display:none;">
+      <div id="sidebar">
+        <h2>Conversations</h2>
+        <div id="convo-list"></div>
+        <div class="sidebar-actions">
+          <button id="new-convo-btn">+ New</button>
+          <button id="delete-convo-btn" disabled>Delete</button>
+        </div>
+      </div>
+      
+      <div id="chat-section">
+        <div id="chat"></div>
+        <form id="input-row">
+          <input id="user-input" type="text" placeholder="Type your message..." autocomplete="off" required />
+          <button type="submit">Send</button>
+        </form>
+      </div>
+      
+      <div id="document-section">
+        <h2>Drafted Document</h2>
+        <div id="document-content">No document yet. Start a conversation to begin drafting.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Global API object for backward compatibility
+    window.agreeUponApi = {
+      login: function(username, password) {
+        return login(username, password);
+      },
+      register: function(username, password) {
+        return register(username, password);
+      },
+      startConversation: function() {
+        return startConversation();
+      },
+      sendMessage: function(content) {
+        return sendMessage(content);
+      }
+    };
+
+    // Variables
+    let token = null;
+    let conversationId = null;
+    let conversations = [];
+    let selectedConvo = null;
+
+    // DOM Elements
+    const authSection = document.getElementById('auth-section');
+    const mainApp = document.getElementById('main-app');
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const toRegisterBtn = document.getElementById('to-register');
+    const toLoginBtn = document.getElementById('to-login');
+    const convoList = document.getElementById('convo-list');
+    const newConvoBtn = document.getElementById('new-convo-btn');
+    const deleteConvoBtn = document.getElementById('delete-convo-btn');
+    const chatSection = document.getElementById('chat-section');
+    const chat = document.getElementById('chat');
+    const inputRow = document.getElementById('input-row');
+    const userInput = document.getElementById('user-input');
+    const documentContent = document.getElementById('document-content');
+
+    // API Functions
+    async function register(username, password) {
+      const res = await fetch('/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    async function login(username, password) {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      token = data.access_token;
+      return data;
+    }
+
+    async function startConversation() {
+      const res = await fetch('/conversations/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: '{}'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      conversationId = data.id;
+      return data;
+    }
+
+    async function sendMessage(content) {
+      const res = await fetch(`/agent/${conversationId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ content })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+
+    // Auth Event Handlers
+    toRegisterBtn.onclick = () => {
+      loginForm.style.display = 'none';
+      registerForm.style.display = 'flex';
+      document.getElementById('auth-title').textContent = 'Create Account';
+    };
+
+    toLoginBtn.onclick = () => {
+      loginForm.style.display = 'flex';
+      registerForm.style.display = 'none';
+      document.getElementById('auth-title').textContent = 'Welcome Back';
+    };
+
+    loginForm.onsubmit = async e => {
+      e.preventDefault();
+      const username = document.getElementById('login-username').value;
+      const password = document.getElementById('login-password').value;
+      try {
+        await login(username, password);
+        await loadConversations();
+        authSection.style.display = 'none';
+        mainApp.style.display = 'flex';
+        if (conversations.length) {
+          selectConversation(conversations[0].id);
+        } else {
+          await createConversation();
+        }
+      } catch (err) {
+        alert('Login failed: ' + err.message);
+      }
+    };
+
+    registerForm.onsubmit = async e => {
+      e.preventDefault();
+      const username = document.getElementById('register-username').value;
+      const password = document.getElementById('register-password').value;
+      try {
+        await register(username, password);
+        alert('Registration successful! Please sign in.');
+        toLoginBtn.click();
+      } catch (err) {
+        alert('Registration failed: ' + err.message);
+      }
+    };
+
+    // Conversation Management
+    async function loadConversations() {
+      const res = await fetch('/conversations/', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!res.ok) throw new Error(await res.text());
+      conversations = await res.json();
+      renderConvoList();
+    }
+
+    function renderConvoList() {
+      convoList.innerHTML = '';
+      if (!conversations.length) {
+        const div = document.createElement('div');
+        div.textContent = 'No conversations yet.';
+        div.style.padding = '20px';
+        div.style.color = '#cbd5e0';
+        div.style.textAlign = 'center';
+        convoList.appendChild(div);
+        deleteConvoBtn.disabled = true;
+        return;
+      }
+      conversations.forEach(convo => {
+        const btn = document.createElement('button');
+        btn.className = 'convo-item' + (selectedConvo && convo.id === selectedConvo.id ? ' selected' : '');
+        btn.innerHTML = `
+          <div style="font-weight: 500;">#${convo.id}</div>
+          <div style="font-size: 0.8em; opacity: 0.8;">${new Date(convo.created_at).toLocaleString()}</div>
+        `;
+        btn.onclick = () => selectConversation(convo.id);
+        convoList.appendChild(btn);
+      });
+      deleteConvoBtn.disabled = !selectedConvo;
+    }
+
+    async function createConversation() {
+      const res = await fetch('/conversations/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: '{}'
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const convo = await res.json();
+      conversations.unshift(convo);
+      renderConvoList();
+      selectConversation(convo.id);
+    }
+
+    async function deleteConversation() {
+      if (!selectedConvo) return;
+      const res = await fetch(`/conversations/${selectedConvo.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!res.ok) { alert('Delete failed'); return; }
+      conversations = conversations.filter(c => c.id !== selectedConvo.id);
+      selectedConvo = null;
+      renderConvoList();
+      chat.innerHTML = '';
+      documentContent.textContent = 'No document yet. Start a conversation to begin drafting.';
+      deleteConvoBtn.disabled = true;
+      if (conversations.length) selectConversation(conversations[0].id);
+    }
+
+    newConvoBtn.onclick = createConversation;
+    deleteConvoBtn.onclick = deleteConversation;
+
+    async function selectConversation(id) {
+      selectedConvo = conversations.find(c => c.id === id);
+      renderConvoList();
+      chat.innerHTML = '';
+      documentContent.textContent = 'Loading...';
+      
+      // Load messages
+      const res = await fetch(`/conversations/${id}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!res.ok) { 
+        chat.innerHTML = '<div class="msg agent">Error loading conversation.</div>'; 
+        return; 
+      }
+      const convo = await res.json();
+      if (convo.messages && convo.messages.length) {
+        convo.messages.forEach(m => {
+          addMsg(m.sender, m.content);
+        });
+      } else {
+        addMsg('agent', "Hi, I'm your Legal Assistant. I can help you draft documents like: NDA Agreement, Lease or Rental Agreement, Partnership Agreement, Shareholder Agreement. Or feel free to describe your legal needs.");
+      }
+      
+      // Load document
+      const docRes = await fetch(`/documents/${id}`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (docRes.ok) {
+        const doc = await docRes.json();
+        documentContent.textContent = doc.content;
+      } else {
+        documentContent.textContent = 'No document yet. Start a conversation to begin drafting.';
+      }
+      
+      // Update global conversationId for backward compatibility
+      conversationId = id;
+    }
+
+    // Chat Functions
+    function addMsg(role, content) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + role;
+      div.textContent = content;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    inputRow.onsubmit = async e => {
+      e.preventDefault();
+      if (!selectedConvo) return;
+      const msg = userInput.value.trim();
+      if (!msg) return;
+      
+      addMsg('user', msg);
+      userInput.value = '';
+      
+      const loadingMsg = document.createElement('div');
+      loadingMsg.className = 'msg agent';
+      loadingMsg.textContent = 'Thinking...';
+      chat.appendChild(loadingMsg);
+      chat.scrollTop = chat.scrollHeight;
+      
+      try {
+        const res = await fetch(`/agent/${selectedConvo.id}/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ content: msg })
+        });
+        
+        if (!res.ok) {
+          loadingMsg.textContent = 'Error: ' + (await res.text());
+          return;
+        }
+        
+        const data = await res.json();
+        console.log('Backend response:', data);
+        loadingMsg.textContent = data.assistant_reply;
+        
+        // Reload document after each agent reply
+        const docRes = await fetch(`/documents/${selectedConvo.id}`, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (docRes.ok) {
+          const doc = await docRes.json();
+          documentContent.textContent = doc.content;
+        }
+      } catch (err) {
+        loadingMsg.textContent = 'Error: ' + err.message;
+      }
+    };
+
+    // Auto-focus input when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+      const loginUsername = document.getElementById('login-username');
+      if (loginUsername) {
+        loginUsername.focus();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+passlib[bcrypt]
+python-jose[cryptography]
+python-dotenv
+langchain
+langchain-openai
+httpx
+
+# LangChain core + OpenAI + community integrations
+langchain
+langchain-openai
+langchain-community
+
+# Optional (to avoid duplicate/conflicting installs)
+pydantic[email]
+bcrypt
