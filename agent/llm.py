@@ -27,24 +27,24 @@ if not HF_TOKEN:
 # 🤖 DeepSeek Model via HF Endpoint
 # ────────────────────────────────
 #DeepSeek-LlaMa-Distilled
-llm_chain: Runnable = ChatOpenAI(
-    model="deepseek-chat",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
-    openai_api_base="https://oaitzvyxm6614ekn.us-east-1.aws.endpoints.huggingface.cloud/v1/",
-    openai_api_key=os.getenv("HF_TOKEN"),
-    temperature=0.3,
-    max_tokens=8192,
-    streaming=True,
-)
-
-#DeepSeekOpenRouter
 # llm_chain: Runnable = ChatOpenAI(
-#     model="deepseek/deepseek-chat-v3-0324:free",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
-#     openai_api_base="https://openrouter.ai/api/v1",
-#     openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+#     model="deepseek-chat",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
+#     openai_api_base="https://oaitzvyxm6614ekn.us-east-1.aws.endpoints.huggingface.cloud/v1/",
+#     openai_api_key=os.getenv("HF_TOKEN"),
 #     temperature=0.3,
 #     max_tokens=8192,
 #     streaming=True,
 # )
+
+#DeepSeekOpenRouter
+llm_chain: Runnable = ChatOpenAI(
+    model="deepseek/deepseek-chat-v3-0324:free",  # Optional for HF OpenAI-compatible endpoints, but kept for clarity
+    openai_api_base="https://openrouter.ai/api/v1",
+    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+    temperature=0.3,
+    max_tokens=8192,
+    streaming=True,
+)
 
 #DeepSeekR1-1q1
 # llm_chain: Runnable = ChatOpenAI(
