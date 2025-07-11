@@ -15,7 +15,15 @@ from langchain.output_parsers import PydanticOutputParser
 
 from agent.llm import llm_chain
 from agent.memory import SQLBufferMemory
-from agent.prompts import PLACEHOLDER_CHECKER_PROMPT
+# PLACEHOLDER_CHECKER_PROMPT inlined from agent/prompts.py
+PLACEHOLDER_CHECKER_PROMPT = PromptTemplate.from_template("""
+You're checking the draft below for any missing fields or placeholder values like [PLACEHOLDER], [Your Name], etc.
+
+Draft:
+{draft}
+
+List all placeholders found in the draft. Return as a Python list. If none found, return an empty list.
+""")
 
 logger = logging.getLogger("agent.placeholder_checker")
 logger.setLevel(logging.DEBUG)
@@ -33,6 +41,7 @@ parser = PydanticOutputParser(pydantic_object=PlaceholderCheckOut)
 # ────────────────────────────
 # Prompt
 # ────────────────────────────
+# prompt for the main chain (unchanged, already in this file)
 prompt = PromptTemplate(
     input_variables=["draft", "history"],
     template="""
