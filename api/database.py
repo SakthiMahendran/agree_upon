@@ -8,7 +8,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:////data/test.db" if os.getenv("SPACE_ID") else "sqlite:///./test.db"
+) if os.getenv("SPACE_ID") else "sqlite:///./test.db"
 
 engine = create_engine(
     DATABASE_URL, connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
