@@ -4,13 +4,6 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from api.database import Base
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    conversations = relationship("Conversation", back_populates="user")
-    documents = relationship("Document", back_populates="user")
 
 class Conversation(Base):
     __tablename__ = "conversations"
@@ -23,8 +16,7 @@ class Conversation(Base):
     document = relationship("Document", uselist=False, back_populates="conversation", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Conversation id={self.id} user_id={self.user_id}>"
-    user = relationship("User", back_populates="conversations")
+        return f"<Conversation id={self.id}>"
 
 class Message(Base):
     __tablename__ = "messages"
@@ -44,5 +36,4 @@ class Document(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    user = relationship("User", back_populates="documents")
     conversation = relationship("Conversation", back_populates="document")

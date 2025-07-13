@@ -6,18 +6,8 @@ from datetime import datetime
 # User Schemas
 # ------------------------
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
 
-class UserLogin(BaseModel):
-    username: str
-    password: str
 
-class UserOut(BaseModel):
-    id: int
-    username: str
-    model_config = ConfigDict(from_attributes=True)
 
 # ------------------------
 # Message Schemas
@@ -52,7 +42,6 @@ class ConversationRead(BaseModel):
 
 class DocumentRead(BaseModel):
     id: int
-    user_id: int
     conversation_id: int
     doc_type: str
     content: str

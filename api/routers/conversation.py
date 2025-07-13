@@ -39,9 +39,8 @@ def list_conversations(
 def get_conversation(
     id: int,
     db: Session = Depends(deps.get_db),
-    user: models.User = Depends(deps.get_current_user),
 ):
-    conv = db.query(models.Conversation).filter_by(id=id, user_id=user.id).first()
+    conv = db.query(models.Conversation).filter_by(id=id).first()
     if not conv:
         raise HTTPException(404, "Conversation not found")
     return conv
@@ -53,9 +52,8 @@ def get_conversation(
 def delete_conversation(
     id: int,
     db: Session = Depends(deps.get_db),
-    user: models.User = Depends(deps.get_current_user),
 ):
-    conv = db.query(models.Conversation).filter_by(id=id, user_id=user.id).first()
+    conv = db.query(models.Conversation).filter_by(id=id).first()
     if not conv:
         raise HTTPException(404, "Conversation not found")
     db.delete(conv); db.commit()

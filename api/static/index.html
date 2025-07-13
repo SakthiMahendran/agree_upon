@@ -16,9 +16,9 @@
 <body>
 
 <!-- ─── Auth overlay ─────────────────────────────────────────── -->
-<div id="authOverlay" class="overlay">
+
   <div class="auth-box">
-    <form id="signupForm" class="auth-form">
+    
       <h2>Sign Up</h2>
       <input type="text" id="signupUsername" placeholder="Username" required />
       <input type="email" id="signupEmail" placeholder="Email" required />
@@ -27,7 +27,7 @@
       <p>Already have an account? <a href="#" id="showLogin">Log in</a></p>
     </form>
 
-    <form id="loginForm" class="auth-form hidden">
+    
       <h2>Log In</h2>
       <input type="text" id="loginUsername" placeholder="Username" required />
       <input type="password" id="loginPassword" placeholder="Password" required />
@@ -38,7 +38,7 @@
 </div>
 
 <!-- ─── Main app ─────────────────────────────────────────────── -->
-<div id="app" class="hidden">
+<div id="app">
   <div id="sidebar">
     <button id="btnNew">+ New Conversation</button>
     <ul id="convList"></ul>

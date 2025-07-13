@@ -5,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from api.database import Base, engine
-from api.routers.auth import router as auth_router
 from api.routers.conversation import router as conversation_router
 from api.routers.agent import router as agent_router
 from api.routers.document import router as document_router
@@ -56,7 +55,6 @@ def serve_homepage():
 # ─────────────────────────────
 # 🚀 Include All Routers
 # ─────────────────────────────
-app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(conversation_router, prefix="/conversations", tags=["conversations"])
 app.include_router(agent_router, tags=["agent"])  # already has prefix="/agent"
 app.include_router(document_router, tags=["documents"])

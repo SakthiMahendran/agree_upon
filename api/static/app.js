@@ -1,55 +1,13 @@
-// app.js
-
-const baseURL = "http://localhost:8000";   // ← adjust if needed
-let jwtToken    = null;
+const baseURL = "http://localhost:8000"; // Adjust as needed
 let currentConvId = null;
-let lastSendTime  = 0;  // timestamp just before sending
+let lastSendTime = 0;
 
 const $ = sel => document.querySelector(sel);
 
 //
-// ─── Auth handlers ───────────────────────────────────────────────
+// ─── Initial Load ────────────────────────────────────────────────
 //
-$("#showLogin").onclick  = e => {
-  e.preventDefault();
-  $("#signupForm").classList.add("hidden");
-  $("#loginForm").classList.remove("hidden");
-};
-$("#showSignup").onclick = e => {
-  e.preventDefault();
-  $("#loginForm").classList.add("hidden");
-  $("#signupForm").classList.remove("hidden");
-};
-
-$("#signupForm").onsubmit = async e => {
-  e.preventDefault();
-  const body = {
-    username: $("#signupUsername").value,
-    email:    $("#signupEmail").value,
-    password: $("#signupPassword").value
-  };
-  await fetch(`${baseURL}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  alert("Signup success! Now log in.");
-};
-
-$("#loginForm").onsubmit = async e => {
-  e.preventDefault();
-  const body = {
-    username: $("#loginUsername").value,
-    password: $("#loginPassword").value
-  };
-  const res = await fetch(`${baseURL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  jwtToken = data.access_token;
-  $("#authOverlay").classList.add("hidden");
+window.onload = () => {
   $("#app").classList.remove("hidden");
   loadConversations();
 };
@@ -57,11 +15,12 @@ $("#loginForm").onsubmit = async e => {
 //
 // ─── Conversations ────────────────────────────────────────────────
 //
-async function loadConversations(){
-  const res  = await apiGET("/conversations");
+async function loadConversations() {
+  const res = await fetch(`${baseURL}/conversations`);
+  const conversations = await res.json();
   const list = $("#convList");
   list.innerHTML = "";
-  res.forEach(conv => {
+  conversations.forEach(conv => {
     const li = document.createElement("li");
     li.textContent = conv.title || `Conversation #${conv.id}`;
     li.onclick = () => openConv(conv.id, li);
@@ -70,19 +29,29 @@ async function loadConversations(){
 }
 
 $("#btnNew").onclick = async () => {
-  const conv = await apiPOST("/conversations", {});
-  loadConversations();
+  const res = await fetch(`${baseURL}/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  const conv = await res.json();
+  await loadConversations();
   openConv(conv.id);
 };
 
-async function openConv(id, liNode){
+async function openConv(id, liNode) {
   currentConvId = id;
   $("#messages").innerHTML = "";
   $("#documentContent").textContent = "No document generated yet.";
-  document.querySelectorAll("#convList li").forEach(li=>li.classList.remove("active"));
-  if(liNode) liNode.classList.add("active");
-  const history = await apiGET(`/conversations/${id}/messages`);
+  document.querySelectorAll("#convList li").forEach(li => li.classList.remove("active"));
+  if (liNode) liNode.classList.add("active");
+
+  const res = await fetch(`${baseURL}/conversations/${id}/messages`);
+  const history = await res.json();
   history.forEach(m => addMessageToUI(m.sender, m.content));
+
+  // Load associated document
+  loadDocument(id);
 }
 
 //
@@ -90,69 +59,65 @@ async function openConv(id, liNode){
 //
 $("#btnSend").onclick = sendMessage;
 $("#input").addEventListener("keydown", e => {
-  if(e.key === "Enter") sendMessage();
+  if (e.key === "Enter") sendMessage();
 });
 
-async function sendMessage(){
+async function sendMessage() {
   const text = $("#input").value.trim();
-  if(!text || !currentConvId) return;
+  if (!text || !currentConvId) return;
+
   $("#input").value = "";
   addMessageToUI("user", text);
 
-  // record send time
   lastSendTime = performance.now();
 
-  // fire the POST
-  const res = await apiPOST(`/agent/${currentConvId}/message`, { content: text });
-
-  // compute round-trip
+  const res = await fetch(`${baseURL}/agent/${currentConvId}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: text })
+  });
+  const data = await res.json();
   const deltaMs = Math.round(performance.now() - lastSendTime);
 
-  addMessageToUI("assistant", res.assistant_reply, deltaMs);
+  addMessageToUI("assistant", data.assistant_reply, deltaMs);
 
-  if(res.document){
-    $("#documentContent").textContent = res.document;
+  if (data.document) {
+    $("#documentContent").textContent = data.document;
+  } else {
+    loadDocument(currentConvId);
   }
 }
 
 //
-// ─── Helpers & API ────────────────────────────────────────────────
+// ─── Document Loading ─────────────────────────────────────────────
+//
+async function loadDocument(conversationId) {
+  const res = await fetch(`${baseURL}/documents/${conversationId}`);
+  if (res.ok) {
+    const doc = await res.json();
+    $("#documentContent").textContent = doc.content;
+  } else {
+    $("#documentContent").textContent = "No document generated yet.";
+  }
+}
+
+//
+// ─── UI Helpers ───────────────────────────────────────────────────
 //
 function addMessageToUI(sender, text, deltaMs) {
-  // for blank replies
-  if(text === "") text = "(no reply)";
+  if (text === "") text = "(no reply)";
 
   const div = document.createElement("div");
   div.className = `message ${sender}`;
   div.textContent = text;
 
-  // if this is assistant, append the time taken
-  if(sender === "assistant" && typeof deltaMs === "number") {
+  if (sender === "assistant" && typeof deltaMs === "number") {
     const span = document.createElement("span");
     span.className = "response-time";
-    span.textContent = `(${deltaMs} ms)`;
+    span.textContent = ` (${deltaMs} ms)`;
     div.appendChild(span);
   }
 
   $("#messages").appendChild(div);
   $("#messages").scrollTop = $("#messages").scrollHeight;
-}
-
-async function apiGET(path) {
-  const res = await fetch(baseURL + path, {
-    headers: { Authorization: `Bearer ${jwtToken}` }
-  });
-  return res.json();
-}
-
-async function apiPOST(path, body) {
-  const res = await fetch(baseURL + path, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${jwtToken}`
-    },
-    body: JSON.stringify(body)
-  });
-  return res.json();
 }

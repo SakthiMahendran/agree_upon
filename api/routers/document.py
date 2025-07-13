@@ -13,13 +13,9 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @router.get("/{conversation_id}")
-def get_document(conversation_id: int, db: Session = Depends(deps.get_db), user: models.User = Depends(deps.get_current_user)):
+def get_document(conversation_id: int, db: Session = Depends(deps.get_db)):
     """Return the drafted document for a conversation, or 404."""
-    doc = (
-        db.query(models.Document)
-        .filter_by(conversation_id=conversation_id, user_id=user.id)
-        .first()
-    )
+    doc = db.query(models.Document).filter_by(conversation_id=conversation_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 

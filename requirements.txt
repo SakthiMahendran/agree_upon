@@ -2,8 +2,8 @@ fastapi
 uvicorn
 sqlalchemy
 pydantic
-passlib[bcrypt]
-python-jose[cryptography]
+[bcrypt]
+[cryptography]
 python-dotenv
 langchain
 langchain-openai

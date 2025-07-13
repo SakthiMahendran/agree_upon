@@ -1,0 +1,32 @@
+# Ignore virtual environments, caches and other non-essentials
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+venv/
+
+# Git files
+.git/
+.gitignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Databases / user generated files
+test.db
+
+# Notebooks / large datasets
+*.ipynb
+
+# IDE config
+.vscode/
+.idea/
+
+# Build artifacts
+*.egg-info/
+*.dist-info/
+
+# Misc
+alembic/versions/*

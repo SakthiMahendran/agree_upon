@@ -28,14 +28,9 @@ def send_message(
     conversation_id: str,
     msg_in: schemas.MessageCreate,
     db: Session = Depends(deps.get_db),
-    user: models.User = Depends(deps.get_current_user),
 ):
     # 1. Load conversation
-    conv = (
-        db.query(models.Conversation)
-        .filter_by(id=conversation_id, user_id=user.id)
-        .first()
-    )
+    conv = db.query(models.Conversation).filter_by(id=conversation_id).first()
     if not conv:
         raise HTTPException(404, "Conversation not found.")
 
@@ -68,7 +63,7 @@ def send_message(
         else:
             doc = models.Document(
                 conversation_id=conv.id,
-                user_id=user.id,
+
                 doc_type=state.document_type or "unknown",
                 content=draft_document,
             )
@@ -102,13 +97,8 @@ async def stream_reply(
     conversation_id: str,
     msg_in: schemas.MessageCreate,
     db: Session = Depends(deps.get_db),
-    user: models.User = Depends(deps.get_current_user),
 ):
-    conv = (
-        db.query(models.Conversation)
-        .filter_by(id=conversation_id, user_id=user.id)
-        .first()
-    )
+    conv = db.query(models.Conversation).filter_by(id=conversation_id).first()
     if not conv:
         raise HTTPException(404, "Conversation not found.")
 
