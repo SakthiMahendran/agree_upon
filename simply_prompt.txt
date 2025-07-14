@@ -1,0 +1,25 @@
+I want you to change the code logic as per I need
+
+and the api like this 
+
+INPUT JSON
+{
+    "user_input"(string): "",
+    "agent_state"(json): "",
+    "conversation_history"(json): ""
+    "document"(multiline string) and nullable: ""--->if document is not generated then empty string
+}
+
+OUTPUT JSON 
+
+{
+    "agent_replay"(string): "",
+    "updated_agent_state"(json): "",
+    "updated_conversation_history"(json): ""
+    "document"(multiline string) and nullable: ""--->if new doucment is generated or old doucment is modified then attach the document else empty string
+
+}
+
+first serach analyse the entire code base to understand this and the
+draft a plan to make a roubuts production ready update and then 
+we can roll out
